@@ -15,7 +15,7 @@ gobject.threads_init()
 
 # import the main window object (mw) from ankiqt
 from aqt import mw
-from aqt.utils import showInfo, tooltip
+from aqt.utils import showInfo, tooltip, closeTooltip
 #from aqt import browser
 
 """ Anki card reviewer voice control, using PocketSphynx"""
@@ -30,6 +30,7 @@ class VoiceControl(object):
     self.file_language_model = os.path.join(addons,'voice_control','anki.lm')
     self.file_dictionary     = os.path.join(addons,'voice_control','anki.dic')
     self.init_actions()
+    self.anki_state = 'N'
 
   def init_actions(self):
     """ These map all of the Sphynx 'sentences' to actions. """
@@ -37,13 +38,13 @@ class VoiceControl(object):
     """ see http://www.speech.cs.cmu.edu/tools/lmtool-new.html """
 
     self.actions = {
-      'AGAIN':        lambda: mw.reviewer._answerCard(self.mapWordToCardButton('AGAIN')),
-      'ANSWER':       mw.reviewer._showAnswerHack,
+      'AGAIN':        lambda:self.mapWordToCardButton('AGAIN'),
+      'ANSWER':       self.showAnswer,
       'BURY CARD':    mw.reviewer.onBuryCard,
       'BURY NOTE':    mw.reviewer.onBuryNote,
-      'EASY':         lambda:mw.reviewer._answerCard(self.mapWordToCardButton('EASY')),
-      'GOOD':         lambda:mw.reviewer._answerCard(self.mapWordToCardButton('GOOD')),
-      'HARD':         lambda:mw.reviewer._answerCard(self.mapWordToCardButton('HARD')),
+      'EASY':         lambda:self.mapWordToCardButton('EASY'),
+      'GOOD':         lambda:self.mapWordToCardButton('GOOD'),
+      'HARD':         lambda:self.mapWordToCardButton('HARD'),
       'MARK':         mw.reviewer.onMark,
       'PAUSE':        self.pause,
       'RESUME':       self.resume,
@@ -53,21 +54,25 @@ class VoiceControl(object):
       'SYNCHRONIZE':  mw.onSync,
       'UNDO':         mw.onUndo
     }
+  def showAnswer(self):
+    if self.anki_state == 'Q': mw.reviewer._showAnswerHack()
 
   def mapWordToCardButton(self, command):
     """ Sends the correct answerCard action based on the number of buttons """
     """ displayed on the answer card. """
-    cnt = self.mw.col.sched.answerButtons(self.card)
-    if command == "AGAIN": return 1
+    cnt = mw.col.sched.answerButtons(self.card)
+    c = lambda x:mw.reviewer._answerCard(x)
+    if self.anki_state != 'A': return
+    if command == "AGAIN": c(1)
     if cnt == 2:
-      if command == "GOOD": return 2
+      if command == "GOOD": c(2)
     elif cnt == 3:
-      if command == "GOOD": return 2
-      if command == "EASY": return 3
+      if command == "GOOD": c(2)
+      if command == "EASY": c(3)
     elif cnt == 3:
-      if command == "HARD": return 2
-      if command == "GOOD": return 3
-      if command == "EASY": return 4
+      if command == "HARD": c(2)
+      if command == "GOOD": c(3)
+      if command == "EASY": c(4)
 
   def addMenuItem(self):
     """ Adds hook to the the appropriate menu """
@@ -78,18 +83,23 @@ class VoiceControl(object):
 
   def startListen(self):
     """ Starts the speech pipeline """
-    tooltip('Starting speech recognition.')
+    if self.anki_state=='N':
+      closeTooltip()
+      tooltip('Starting speech recognition.')
     self.pipeline.set_state(gst.STATE_PLAYING) 
   def stopListen(self):
     """ Completely disables the speech pipeline """
+    closeTooltip()
     tooltip('Stopping speech recognition.')
     self.pipeline.set_state(gst.STATE_PAUSED)
   def pause(self):
     self.responsive = False
+    closeTooltip()
     tooltip('Pausing speech recognition, say "RESUME" to continue')
   def resume(self):
     self.pipeline.set_state(gst.STATE_PLAYING) 
     self.responsive = True
+    closeTooltip()
     tooltip('Resuming speech recognition.')
 
   def init_gst(self):
@@ -159,12 +169,20 @@ class VoiceControl(object):
           self.resume()
           returnVal = True
       elif string in self.actions:
+        closeTooltip()
         tooltip('heard "%s"' % string)
         action = self.actions[string]()
         returnVal = True
         return returnVal
+  def questionState(self):
+    self.startListen()
+    self.anki_state='Q'
+
+  def answerState(self):
+    self.anki_state='A'
 
 # GLOBAL namespace
 # HERE is where we start.
 mw.voiceControl = VoiceControl(mw)
-addHook('showQuestion', mw.voiceControl.startListen)
+addHook('showQuestion', mw.voiceControl.questionState)
+addHook('showAnswer',   mw.voiceControl.answerState)
