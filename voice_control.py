@@ -22,8 +22,8 @@ class VoiceControl(object):
 
   def initSphynx(self):
     addons = mw.pm.addonFolder()
-    self.file_language_model = os.path.join(addons,'3005.lm')
-    self.file_dictionary     = os.path.join(addons,'3005.dic')
+    self.file_language_model = os.path.join(addons,'anki.lm')
+    self.file_dictionary     = os.path.join(addons,'anki.dic')
     self.init_actions()
     self.init_gst()
     self.responsive = True
