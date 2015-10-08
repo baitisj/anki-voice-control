@@ -9,6 +9,10 @@ import pygst
 pygst.require('0.10')
 import os, gst, sys
 
+# This is REQUIRED for getting the pygst threading model going.
+import gobject
+gobject.threads_init()
+
 # import the main window object (mw) from ankiqt
 from aqt import mw
 from aqt.utils import showInfo, tooltip
@@ -19,55 +23,51 @@ class VoiceControl(object):
   def __init__(self,mw):
     self.mw = mw
     self.initSphynx()
+    self.init_gst()
 
   def initSphynx(self):
     addons = mw.pm.addonFolder()
     self.file_language_model = os.path.join(addons,'anki.lm')
     self.file_dictionary     = os.path.join(addons,'anki.dic')
     self.init_actions()
-    self.init_gst()
-    self.responsive = True
-    self.startListen()
 
   def init_actions(self):
     """ These map all of the Sphynx 'sentences' to actions. """
     """ In order to generate an appropriate language model, """
     """ see http://www.speech.cs.cmu.edu/tools/lmtool-new.html """
-    '''
-    self.actions = {
-      'AGAIN':1,
-      'HARD':2,
-      'GOOD':3,
-      'EASY':4,
-      'UNDO': "undu",
-      'MARK': "mark",
-      'SUSPEND CARD' : "susp1",
-      'SUSPEND NOTE' : "susp1",
-      'BURY CARD' : "bury1",
-      'BURY NOTE' : "bury2",
-      'SYNCHRONIZE' : "susp1",
-      'PAUSE':  "pause",
-      'RESUME': "resume"
-    }
-    '''
 
-    self.actions = [
-      'AGAIN',
-      'ANSWER',
-      'BURY CARD',
-      'BURY NOTE',
-      'EASY',
-      'GOOD',
-      'HARD',
-      'MARK',
-      'PAUSE',
-      'RESUME',
-      'STAR',
-      'SUSPEND CARD',
-      'SUSPEND NOTE',
-      'SYNCHRONIZE',
-      'UNDO'
-    ]
+    self.actions = {
+      'AGAIN':        lambda: mw.reviewer._answerCard(self.mapWordToCardButton('AGAIN')),
+      'ANSWER':       mw.reviewer._showAnswerHack,
+      'BURY CARD':    mw.reviewer.onBuryCard,
+      'BURY NOTE':    mw.reviewer.onBuryNote,
+      'EASY':         lambda:mw.reviewer._answerCard(self.mapWordToCardButton('EASY')),
+      'GOOD':         lambda:mw.reviewer._answerCard(self.mapWordToCardButton('GOOD')),
+      'HARD':         lambda:mw.reviewer._answerCard(self.mapWordToCardButton('HARD')),
+      'MARK':         mw.reviewer.onMark,
+      'PAUSE':        self.pause,
+      'RESUME':       self.resume,
+      'STAR':         mw.reviewer.onMark,
+      'SUSPEND CARD': mw.reviewer.onSuspendCard,
+      'SUSPEND NOTE': mw.reviewer.onSuspend,
+      'SYNCHRONIZE':  mw.onSync,
+      'UNDO':         mw.onUndo
+    }
+
+  def mapWordToCardButton(self, command):
+    """ Sends the correct answerCard action based on the number of buttons """
+    """ displayed on the answer card. """
+    cnt = self.mw.col.sched.answerButtons(self.card)
+    if command == "AGAIN" return 1
+    if cnt == 2:
+      if command == "GOOD" return 2
+    elif cnt == 3:
+      if command == "GOOD" return 2
+      if command == "EASY" return 3
+    elif cnt == 3:
+      if command == "HARD" return 2
+      if command == "GOOD" return 3
+      if command == "EASY" return 4
 
   def addMenuItem(self):
     """ Adds hook to the the appropriate menu """
@@ -78,18 +78,26 @@ class VoiceControl(object):
 
   def startListen(self):
     """ Starts the speech pipeline """
+    tooltip('Starting speech recognition.')
     self.pipeline.set_state(gst.STATE_PLAYING) 
   def stopListen(self):
     """ Completely disables the speech pipeline """
+    tooltip('Stopping speech recognition.')
     self.pipeline.set_state(gst.STATE_PAUSED)
+  def pause(self):
+    self.responsive = False
+    tooltip('Pausing speech recognition, say "RESUME" to continue')
+  def resume(self):
+    self.pipeline.set_state(gst.STATE_PLAYING) 
+    self.responsive = True
+    tooltip('Resuming speech recognition.')
 
   def init_gst(self):
       """Initialize the speech components"""
       print ">> init_gst\n"
       self.pipeline = gst.parse_launch('autoaudiosrc ! audioconvert ! audioresample '
-				       + '! vader name=vad auto-threshold=true '
-				       + '! pocketsphinx name=asr ! fakesink')
-      #self.pipeline = gst.parse_launch('alsasrc ! audioconvert ! audioresample '
+                             + '! vader name=vad auto-threshold=true '
+                             + '! pocketsphinx name=asr ! fakesink')
       asr = self.pipeline.get_by_name('asr')
       asr.set_property('lm', self.file_language_model)
       asr.set_property('dict', self.file_dictionary)
@@ -100,10 +108,10 @@ class VoiceControl(object):
       bus.add_signal_watch()
       bus.connect('message::application', self.application_message)
       self.pipeline.set_state(gst.STATE_PAUSED)
+      self.responsive = True
 
   def asr_partial_result(self, asr, text, uttid):
       """Forward partial result signals on the bus to the main thread."""
-      print ">> asr_partial_result\n"
       struct = gst.Structure('partial_result')
       struct.set_value('hyp', text)
       struct.set_value('uttid', uttid)
@@ -111,7 +119,6 @@ class VoiceControl(object):
 
   def asr_result(self, asr, text, uttid):
       """Forward result signals on the bus to the main thread."""
-      print ">> asr_result\n"
       struct = gst.Structure('result')
       struct.set_value('hyp', text)
       struct.set_value('uttid', uttid)
@@ -119,74 +126,46 @@ class VoiceControl(object):
 
   def application_message(self, bus, msg):
       """Receive application messages from the bus."""
-      print ">> application_message\n"
       msgtype = msg.structure.get_name()
       if msgtype == 'result':
-	  self.final_result(msg.structure['hyp'], msg.structure['uttid'])
+        self.final_result(msg.structure['hyp'], msg.structure['uttid'])
 
   def final_result(self, hyp, uttid):
       """Decide what to do with the heard words."""
-      print ">> final_result\n"
       result = False
-      print 'heard "%s"' % hyp
-      #tooltip('heard "%s"' % hyp)
       word_list = hyp.split()
       word_count = len(word_list)
       word_num = 0
       while word_num <= word_count - 1:
-	  if word_num <= word_count - 2:
-	      try_word = word_list[word_num] + " " + word_list[word_num + 1]
-	  else:
-	      try_word = word_list[word_num]
-	  result = self.word_run(try_word)
-	  if result == True:
-	      word_num = word_num + 1
-	  elif try_word != word_list[word_num]:
-	      try_word = word_list[word_num]
-	      result = self.word_run(try_word)
-	  word_num = word_num + 1
-      if result == True:
-	  print "successfully handled %s\n" % hyp
+        if word_num <= word_count - 2:
+          try_word = word_list[word_num] + " " + word_list[word_num + 1]
+        else:
+          try_word = word_list[word_num]
+        result = self.word_run(try_word)
+        if result == True:
+          word_num = word_num + 1
+        elif try_word != word_list[word_num]:
+          try_word = word_list[word_num]
+          result = self.word_run(try_word)
+        word_num = word_num + 1
 
   def word_run(self, string):
       """Really do a command."""
-      print ">> word_run\n"
       returnVal = False
       action = ''
       is_password = False
       words = string.split(' ')
       if self.responsive == False:
-	  if string == "RESUME":
-	      self.responsive = True
-	      returnVal = True
+        if string == "RESUME":
+          self.resume()
+          returnVal = True
       elif string in self.actions:
-	  action = self.actions[string]
-	  returnVal = True
-	  #action()
-	  print action + '\n'
-	  returnVal = True
-      return returnVal
+        tooltip('heard "%s"' % string)
+        action = self.actions[string]()
+        returnVal = True
+        return returnVal
 
 # GLOBAL namespace
 # HERE is where we start.
 mw.voiceControl = VoiceControl(mw)
-
-# Unfortunately, because of the C callback structure, 
-# I haven't been able to figure out how to shove all
-# of these functions into a single class. So, I'm stuck
-# with patching the mw object.
-#mw.initSphynx = initSphynx
-#mw.init_actions = init_actions
-#mw.init_gst = init_gst
-#mw.word_run = word_run
-#mw.startListen = startListen
-#mw.stopListen = startListen
-#mw.final_result = final_result
-#mw.asr_partial_result = asr_partial_result
-#mw.asr_result = asr_result
-#mw.application_message = application_message
-#
-#voiceInit(mw)
-#addHook('reviewer.showQuestion', mw.voice_control.startListen)
-#addHook('reviewer.showQuestion', mw.voice_control.startListen)
-
+addHook('reviewer.showQuestion', mw.voice_control.startListen)
