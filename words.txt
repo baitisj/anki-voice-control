@@ -1,0 +1,15 @@
+again
+answer
+bury card
+bury note
+easy
+good
+hard
+mark
+pause
+resume
+star
+suspend card
+suspend note
+synchronize
+undo

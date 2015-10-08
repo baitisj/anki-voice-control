@@ -53,18 +53,20 @@ class VoiceControl(object):
 
     self.actions = [
       'AGAIN',
-      'HARD',
-      'GOOD',
+      'ANSWER',
+      'BURY CARD',
+      'BURY NOTE',
       'EASY',
-      'UNDO',
+      'GOOD',
+      'HARD',
       'MARK',
-      'SUSPEND CARD' ,
-      'SUSPEND NOTE' ,
-      'BURY CARD' ,
-      'BURY NOTE' ,
-      'SYNCHRONIZE' ,
       'PAUSE',
-      'RESUME'
+      'RESUME',
+      'STAR',
+      'SUSPEND CARD',
+      'SUSPEND NOTE',
+      'SYNCHRONIZE',
+      'UNDO'
     ]
 
   def addMenuItem(self):
