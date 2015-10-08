@@ -85,6 +85,7 @@ class VoiceControl(object):
       """Initialize the speech components"""
       print ">> init_gst\n"
       self.pipeline = gst.parse_launch('autoaudiosrc ! audioconvert ! audioresample '
+				       + '! vader name=vad auto-threshold=true '
 				       + '! pocketsphinx name=asr ! fakesink')
       #self.pipeline = gst.parse_launch('alsasrc ! audioconvert ! audioresample '
       asr = self.pipeline.get_by_name('asr')
