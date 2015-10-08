@@ -24,14 +24,14 @@ Here's a list of the voice commands that are currently implemented.
 
 Command | Description
 ----------------------
-"answer" | shows the answer side of the card
-"again, easy, good, hard" | corresponding button on the answer side of the card
-"mark, star" | Toggles the marked status of the card
-"undo" | Same as the undo key
-"pause, resume" | Say "pause", and the voice recognition will be disabled until
+answer | shows the answer side of the card
+again, easy, good, hard | corresponding button on the answer side of the card
+mark, star | Toggles the marked status of the card
+undo | Same as the undo key
+pause, resume | Say "pause", and the voice recognition will be disabled until
 you say "resume"
-"synchronize" | synchronizes your collection.
-"bury card, bury note, suspend card, suspend note" | management of cards
+synchronize | synchronizes your collection.
+bury card, bury note, suspend card, suspend note" | management of cards
 
 ## Thanks ##
 Special thanks to  worden.e...@gmail.com, author of
