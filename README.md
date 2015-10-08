@@ -12,7 +12,7 @@ hands-free operation.
 ... and python bindings for both.
 In order to install the required software under Ubuntu:
 
-`apt-get install python-pocketsphynx`
+`apt-get install python-pocketsphynx`<br>
 `apt-get install gstreamer0.10-pocketsphinx`
 
 ## Future Work ##
