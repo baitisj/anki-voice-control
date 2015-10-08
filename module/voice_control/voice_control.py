@@ -60,7 +60,7 @@ class VoiceControl(object):
   def mapWordToCardButton(self, command):
     """ Sends the correct answerCard action based on the number of buttons """
     """ displayed on the answer card. """
-    cnt = mw.col.sched.answerButtons(self.card)
+    cnt = mw.col.sched.answerButtons(mw.reviewer.card)
     c = lambda x:mw.reviewer._answerCard(x)
     if self.anki_state != 'A': return
     if command == "AGAIN": c(1)
