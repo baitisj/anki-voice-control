@@ -58,16 +58,16 @@ class VoiceControl(object):
     """ Sends the correct answerCard action based on the number of buttons """
     """ displayed on the answer card. """
     cnt = self.mw.col.sched.answerButtons(self.card)
-    if command == "AGAIN" return 1
+    if command == "AGAIN": return 1
     if cnt == 2:
-      if command == "GOOD" return 2
+      if command == "GOOD": return 2
     elif cnt == 3:
-      if command == "GOOD" return 2
-      if command == "EASY" return 3
+      if command == "GOOD": return 2
+      if command == "EASY": return 3
     elif cnt == 3:
-      if command == "HARD" return 2
-      if command == "GOOD" return 3
-      if command == "EASY" return 4
+      if command == "HARD": return 2
+      if command == "GOOD": return 3
+      if command == "EASY": return 4
 
   def addMenuItem(self):
     """ Adds hook to the the appropriate menu """
@@ -94,7 +94,6 @@ class VoiceControl(object):
 
   def init_gst(self):
       """Initialize the speech components"""
-      print ">> init_gst\n"
       self.pipeline = gst.parse_launch('autoaudiosrc ! audioconvert ! audioresample '
                              + '! vader name=vad auto-threshold=true '
                              + '! pocketsphinx name=asr ! fakesink')
@@ -168,4 +167,4 @@ class VoiceControl(object):
 # GLOBAL namespace
 # HERE is where we start.
 mw.voiceControl = VoiceControl(mw)
-addHook('reviewer.showQuestion', mw.voice_control.startListen)
+addHook('showQuestion', mw.voiceControl.startListen)
