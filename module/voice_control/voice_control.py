@@ -64,12 +64,12 @@ class VoiceControl(object):
     c = lambda x:mw.reviewer._answerCard(x)
     if self.anki_state != 'A': return
     if command == "AGAIN": c(1)
-    if cnt == 2:
+    elif cnt == 2:
       if command == "GOOD": c(2)
     elif cnt == 3:
       if command == "GOOD": c(2)
       if command == "EASY": c(3)
-    elif cnt == 3:
+    elif cnt == 4:
       if command == "HARD": c(2)
       if command == "GOOD": c(3)
       if command == "EASY": c(4)
@@ -85,12 +85,12 @@ class VoiceControl(object):
     """ Starts the speech pipeline """
     if self.anki_state=='N':
       closeTooltip()
-      tooltip('Starting speech recognition.')
+      tooltip('Starting speech recognition.', 500)
     self.pipeline.set_state(gst.STATE_PLAYING) 
   def stopListen(self):
     """ Completely disables the speech pipeline """
     closeTooltip()
-    tooltip('Stopping speech recognition.')
+    tooltip('Stopping speech recognition.', 500)
     self.pipeline.set_state(gst.STATE_PAUSED)
   def pause(self):
     self.responsive = False
@@ -100,7 +100,7 @@ class VoiceControl(object):
     self.pipeline.set_state(gst.STATE_PLAYING) 
     self.responsive = True
     closeTooltip()
-    tooltip('Resuming speech recognition.')
+    tooltip('Resuming speech recognition.', 500)
 
   def init_gst(self):
       """Initialize the speech components"""
@@ -170,7 +170,7 @@ class VoiceControl(object):
           returnVal = True
       elif string in self.actions:
         closeTooltip()
-        tooltip('heard "%s"' % string)
+        tooltip('heard "%s"' % string, 200)
         action = self.actions[string]()
         returnVal = True
         return returnVal
