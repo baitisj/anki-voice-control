@@ -5,6 +5,7 @@
 from anki.hooks import addHook
 from PyQt4.QtCore import SIGNAL
 from PyQt4.QtGui import QAction
+from aqt.qt import *
 import pygst
 pygst.require('0.10')
 import os, gst, sys
@@ -15,7 +16,7 @@ gobject.threads_init()
 
 # import the main window object (mw) from ankiqt
 from aqt import mw
-from aqt.utils import showInfo, tooltip, closeTooltip, showText
+from aqt.utils import showText
 #from aqt import browser
 
 """ Anki card reviewer voice control, using PocketSphynx"""
@@ -25,6 +26,7 @@ class VoiceControl(object):
     self.initSphynx()
     self.init_gst()
     self.diag = None
+    self.label = None
 
   def initSphynx(self):
     addons = mw.pm.addonFolder()
@@ -85,13 +87,11 @@ class VoiceControl(object):
   def startListen(self):
     """ Starts the speech pipeline """
     if self.anki_state=='N':
-      closeTooltip()
-      tooltip('Starting speech recognition.', 1000)
+      self.showStatus('Starting speech recognition.', 1000)
     self.pipeline.set_state(gst.STATE_PLAYING) 
   def stopListen(self):
     """ Completely disables the speech pipeline """
-    closeTooltip()
-    tooltip('Stopping speech recognition.', 1000)
+    self.showStatus('Stopping speech recognition.', 1000)
     self.pipeline.set_state(gst.STATE_PAUSED)
   def pause(self):
     self.responsive = False
@@ -168,8 +168,7 @@ class VoiceControl(object):
       returnVal = False
       action = ''
       is_password = False
-      closeTooltip()
-      tooltip('heard "%s"' % string, 750)
+      self.showStatus('heard "%s"' % string, 750)
       #words = string.split(' ')
       if self.responsive == False:
         if string == "RESUME":
@@ -185,6 +184,26 @@ class VoiceControl(object):
 
   def answerState(self):
     self.anki_state='A'
+
+  def showStatus(self, msg, period=1000):
+    if self.label:
+      self.label.hide()
+      self.label.timer.stop()
+      #self.label.deleteLater()
+    aw = mw.app.activeWindow()
+    lab = QLabel(msg, aw)
+    lab.setFrameStyle(QFrame.Panel)
+    lab.setLineWidth(2)
+    lab.setWindowFlags(Qt.ToolTip)
+    p = QPalette()
+    p.setColor(QPalette.Window, QColor("#feffc4"))
+    p.setColor(QPalette.WindowText, QColor("#000000"))
+    lab.setPalette(p)
+    lab.move(
+        aw.mapToGlobal(QPoint(0, -100 + aw.height())))
+    lab.show()
+    self.label = lab
+    self.label.timer = mw.progress.timer(period, self.label.hide, False)
 
 # GLOBAL namespace
 # HERE is where we start.
