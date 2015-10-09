@@ -15,7 +15,7 @@ gobject.threads_init()
 
 # import the main window object (mw) from ankiqt
 from aqt import mw
-from aqt.utils import showInfo, tooltip, closeTooltip
+from aqt.utils import showInfo, tooltip, closeTooltip, showText
 #from aqt import browser
 
 """ Anki card reviewer voice control, using PocketSphynx"""
@@ -24,6 +24,7 @@ class VoiceControl(object):
     self.mw = mw
     self.initSphynx()
     self.init_gst()
+    self.diag = None
 
   def initSphynx(self):
     addons = mw.pm.addonFolder()
@@ -85,22 +86,26 @@ class VoiceControl(object):
     """ Starts the speech pipeline """
     if self.anki_state=='N':
       closeTooltip()
-      tooltip('Starting speech recognition.', 500)
+      tooltip('Starting speech recognition.', 1000)
     self.pipeline.set_state(gst.STATE_PLAYING) 
   def stopListen(self):
     """ Completely disables the speech pipeline """
     closeTooltip()
-    tooltip('Stopping speech recognition.', 500)
+    tooltip('Stopping speech recognition.', 1000)
     self.pipeline.set_state(gst.STATE_PAUSED)
   def pause(self):
     self.responsive = False
-    closeTooltip()
-    tooltip('Pausing speech recognition, say "RESUME" to continue')
+    self.diag, box = showText('Pausing speech recognition, say "RESUME" to continue', run=False)
+    def onReject(self):
+      self.diag = None
+    self.diag.connect(box, SIGNAL("rejected()"), lambda:onReject(self))
+    self.diag.show()
   def resume(self):
     self.pipeline.set_state(gst.STATE_PLAYING) 
+    if self.diag:
+      self.diag.reject()
+      self.diag = None
     self.responsive = True
-    closeTooltip()
-    tooltip('Resuming speech recognition.', 500)
 
   def init_gst(self):
       """Initialize the speech components"""
@@ -163,14 +168,14 @@ class VoiceControl(object):
       returnVal = False
       action = ''
       is_password = False
-      words = string.split(' ')
+      closeTooltip()
+      tooltip('heard "%s"' % string, 750)
+      #words = string.split(' ')
       if self.responsive == False:
         if string == "RESUME":
           self.resume()
           returnVal = True
       elif string in self.actions:
-        closeTooltip()
-        tooltip('heard "%s"' % string, 200)
         action = self.actions[string]()
         returnVal = True
         return returnVal
