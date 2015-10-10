@@ -17,7 +17,6 @@ gobject.threads_init()
 # import the main window object (mw) from ankiqt
 from aqt import mw
 from aqt.utils import showText
-#from aqt import browser
 
 """ Anki card reviewer voice control, using PocketSphynx"""
 class VoiceControl(object):
@@ -27,13 +26,13 @@ class VoiceControl(object):
     self.init_gst()
     self.diag = None
     self.label = None
+    self.anki_state = 'N'
 
   def initSphynx(self):
     addons = mw.pm.addonFolder()
     self.file_language_model = os.path.join(addons,'voice_control','anki.lm')
     self.file_dictionary     = os.path.join(addons,'voice_control','anki.dic')
     self.init_actions()
-    self.anki_state = 'N'
 
   def init_actions(self):
     """ These map all of the Sphynx 'sentences' to actions. """
@@ -57,6 +56,7 @@ class VoiceControl(object):
       'SYNCHRONIZE':  mw.onSync,
       'UNDO':         mw.onUndo
     }
+
   def showAnswer(self):
     if self.anki_state == 'Q': mw.reviewer._showAnswerHack()
 
@@ -87,11 +87,11 @@ class VoiceControl(object):
   def startListen(self):
     """ Starts the speech pipeline """
     if self.anki_state=='N':
-      self.showStatus('Starting speech recognition.', 1000)
+      self.showStatus('Starting speech recognition.')
     self.pipeline.set_state(gst.STATE_PLAYING) 
   def stopListen(self):
     """ Completely disables the speech pipeline """
-    self.showStatus('Stopping speech recognition.', 1000)
+    self.showStatus('Stopping speech recognition.')
     self.pipeline.set_state(gst.STATE_PAUSED)
   def pause(self):
     self.responsive = False
@@ -187,23 +187,38 @@ class VoiceControl(object):
 
   def showStatus(self, msg, period=1000):
     if self.label:
-      self.label.hide()
-      self.label.timer.stop()
-      #self.label.deleteLater()
+      self.label.closeLabel()
     aw = mw.app.activeWindow()
-    lab = QLabel(msg, aw)
-    lab.setFrameStyle(QFrame.Panel)
-    lab.setLineWidth(2)
-    lab.setWindowFlags(Qt.ToolTip)
-    p = QPalette()
-    p.setColor(QPalette.Window, QColor("#feffc4"))
-    p.setColor(QPalette.WindowText, QColor("#000000"))
-    lab.setPalette(p)
+    lab = VoiceStatus(msg, aw, period)
     lab.move(
         aw.mapToGlobal(QPoint(0, -100 + aw.height())))
     lab.show()
     self.label = lab
-    self.label.timer = mw.progress.timer(period, self.label.hide, False)
+
+class VoiceStatus(QLabel):
+  def __init__(self, msg, window, period):
+    self.timer = mw.progress.timer(period, self.closeLabel, False)
+    QLabel.__init__(self,msg,window)
+    self.setFrameStyle(QFrame.Panel)
+    self.setLineWidth(2)
+    self.setWindowFlags(Qt.ToolTip)
+    p = QPalette()
+    p.setColor(QPalette.Window, QColor("#feffc4"))
+    p.setColor(QPalette.WindowText, QColor("#000000"))
+    self.setPalette(p)
+  def mousePressEvent(self, evt):
+    evt.accept()
+    self.hide()
+  def closeLabel(self):
+    self.hide()
+    if self.timer:
+      self.timer.stop()
+      self.timer = None
+    try:
+      self.deleteLater()
+    except:
+      # Already deleted
+      pass
 
 # GLOBAL namespace
 # HERE is where we start.
