@@ -6,20 +6,24 @@ from anki.hooks import addHook
 from PyQt4.QtCore import SIGNAL
 from PyQt4.QtGui import QAction
 from aqt.qt import *
-import pygst
-pygst.require('0.10')
-import os, gst, sys
-
-# This is REQUIRED for getting the pygst threading model going.
-import gobject
-gobject.threads_init()
-
 # import the main window object (mw) from ankiqt
 from aqt import mw
 from aqt.utils import showText
 
+import os
+import threading
+
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import GObject, Gst
+
+# This is REQUIRED for getting the pygst threading model going.
+GObject.threads_init()
+Gst.init(None)
+
 """ Anki card reviewer voice control, using PocketSphynx"""
 class VoiceControl(object):
+
   def __init__(self,mw):
     self.mw = mw
     self.initSphynx()
@@ -79,20 +83,20 @@ class VoiceControl(object):
 
   def addMenuItem(self):
     """ Adds hook to the the appropriate menu """
-    action = QAction("Start speech control", self)
+    QAction("Start speech control", self)
     self.initSphynx = initSphynx
-    #self.connect(action, SIGNAL("triggered()"), lambda s=self: initSphynx(self))
-    #self.form.menuEdit.addAction(action)
 
   def startListen(self):
     """ Starts the speech pipeline """
     if self.anki_state=='N':
       self.showStatus('Starting speech recognition.')
-    self.pipeline.set_state(gst.STATE_PLAYING) 
+    self.pipeline.set_state(Gst.State.PLAYING)
+
   def stopListen(self):
     """ Completely disables the speech pipeline """
     self.showStatus('Stopping speech recognition.')
-    self.pipeline.set_state(gst.STATE_PAUSED)
+    self.pipeline.set_state(Gst.State.PAUSED)
+
   def pause(self):
     self.responsive = False
     self.diag, box = showText('Pausing speech recognition, say "RESUME" to continue', run=False)
@@ -100,8 +104,9 @@ class VoiceControl(object):
       self.diag = None
     self.diag.connect(box, SIGNAL("rejected()"), lambda:onReject(self))
     self.diag.show()
+
   def resume(self):
-    self.pipeline.set_state(gst.STATE_PLAYING) 
+    self.pipeline.set_state(Gst.State.PLAYING)
     if self.diag:
       self.diag.reject()
       self.diag = None
@@ -109,75 +114,62 @@ class VoiceControl(object):
 
   def init_gst(self):
       """Initialize the speech components"""
-      self.pipeline = gst.parse_launch('autoaudiosrc ! audioconvert ! audioresample '
-                             + '! vader name=vad auto-threshold=true '
-                             + '! pocketsphinx name=asr ! fakesink')
+      self.pipeline = Gst.parse_launch(
+        'autoaudiosrc ! audioconvert ! audioresample ! ' +
+        'pocketsphinx name=asr ! fakesink')
+
       asr = self.pipeline.get_by_name('asr')
       asr.set_property('lm', self.file_language_model)
       asr.set_property('dict', self.file_dictionary)
-      asr.connect('partial_result', self.asr_partial_result)
-      asr.connect('result', self.asr_result)
       asr.set_property('configured', True)
+
       bus = self.pipeline.get_bus()
       bus.add_signal_watch()
-      bus.connect('message::application', self.application_message)
-      self.pipeline.set_state(gst.STATE_PAUSED)
+      bus.connect('message::element', self.element_message)
+      self.pipeline.set_state(Gst.State.PAUSED)
       self.responsive = True
 
-  def asr_partial_result(self, asr, text, uttid):
-      """Forward partial result signals on the bus to the main thread."""
-      struct = gst.Structure('partial_result')
-      struct.set_value('hyp', text)
-      struct.set_value('uttid', uttid)
-      asr.post_message(gst.message_new_application(asr, struct))
+  def element_message(self, bus, msg):
+      """Receive element messages from the bus."""
+      msgtype = msg.get_structure().get_name()
+      if msgtype != 'pocketsphinx':
+          return
+      if msg.get_structure().get_value('final'):
+        self.final_result(msg.get_structure().get_value('hypothesis'),
+                          msg.get_structure().get_value('confidence'))
 
-  def asr_result(self, asr, text, uttid):
-      """Forward result signals on the bus to the main thread."""
-      struct = gst.Structure('result')
-      struct.set_value('hyp', text)
-      struct.set_value('uttid', uttid)
-      asr.post_message(gst.message_new_application(asr, struct))
+  def final_result(self, hyp, confidence):
+      """Decide what to do with the heard words"""
+      words = hyp.split()
+      actions = []
+      i = 0
+      # make list of supported user's commands
+      while i < len(words):
+        # first of all check combination of two words
+        if i < len(words) - 1:
+          action = words[i] + " " + words[i + 1]
+          if self.is_valid_action(action):
+            actions.append(action)
+            i += 2
+            continue
+        # if combination is not correct then check individual word
+        if self.is_valid_action(words[i]):
+          actions.append(words[i])
+        i += 1
+      # execute commands
+      for action in actions:
+        self.run_action(action)
 
-  def application_message(self, bus, msg):
-      """Receive application messages from the bus."""
-      msgtype = msg.structure.get_name()
-      if msgtype == 'result':
-        self.final_result(msg.structure['hyp'], msg.structure['uttid'])
+  def is_valid_action(self, string):
+    """Check what plugin support command"""
+    return string in self.actions
 
-  def final_result(self, hyp, uttid):
-      """Decide what to do with the heard words."""
-      result = False
-      word_list = hyp.split()
-      word_count = len(word_list)
-      word_num = 0
-      while word_num <= word_count - 1:
-        if word_num <= word_count - 2:
-          try_word = word_list[word_num] + " " + word_list[word_num + 1]
-        else:
-          try_word = word_list[word_num]
-        result = self.word_run(try_word)
-        if result == True:
-          word_num = word_num + 1
-        elif try_word != word_list[word_num]:
-          try_word = word_list[word_num]
-          result = self.word_run(try_word)
-        word_num = word_num + 1
-
-  def word_run(self, string):
-      """Really do a command."""
-      returnVal = False
-      action = ''
-      is_password = False
+  def run_action(self, string):
+      """Execute command if it's valid and plugin in appropriate state"""
       self.showStatus('heard "%s"' % string, 750)
-      #words = string.split(' ')
-      if self.responsive == False:
-        if string == "RESUME":
-          self.resume()
-          returnVal = True
-      elif string in self.actions:
-        action = self.actions[string]()
-        returnVal = True
-        return returnVal
+      if self.responsive or not self.responsive and string == "RESUME":
+        self.actions[string]()
+
   def questionState(self):
     self.startListen()
     self.anki_state='Q'
@@ -189,16 +181,19 @@ class VoiceControl(object):
     if self.label:
       self.label.closeLabel()
     aw = mw.app.activeWindow()
-    lab = VoiceStatus(msg, aw, period)
-    lab.move(
-        aw.mapToGlobal(QPoint(0, -100 + aw.height())))
-    lab.show()
-    self.label = lab
+    self.label = VoiceStatus(msg, aw, period)
+    self.label.move(aw.mapToGlobal(QPoint(0, -100 + aw.height())))
+    self.label.show()
 
 class VoiceStatus(QLabel):
+
   def __init__(self, msg, window, period):
+
     self.timer = mw.progress.timer(period, self.closeLabel, False)
-    QLabel.__init__(self,msg,window)
+    # method closeLabel can be invoked from multiple places
+    self.closeLock = threading.Lock()
+
+    QLabel.__init__(self, msg, window)
     self.setFrameStyle(QFrame.Panel)
     self.setLineWidth(2)
     self.setWindowFlags(Qt.ToolTip)
@@ -206,19 +201,24 @@ class VoiceStatus(QLabel):
     p.setColor(QPalette.Window, QColor("#feffc4"))
     p.setColor(QPalette.WindowText, QColor("#000000"))
     self.setPalette(p)
+
   def mousePressEvent(self, evt):
     evt.accept()
     self.hide()
+
   def closeLabel(self):
-    self.hide()
-    if self.timer:
+    with self.closeLock:
+      if not self.timer:
+        # label already closed
+        return
       self.timer.stop()
       self.timer = None
-    try:
-      self.deleteLater()
-    except:
-      # Already deleted
-      pass
+      self.hide()
+      try:
+        self.deleteLater()
+      except:
+        # Already deleted
+        pass
 
 # GLOBAL namespace
 # HERE is where we start.
